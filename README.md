@@ -52,7 +52,8 @@ figures/                  # output (created by analysis.py)
   preston_curve.png       # main figure
   country_data.csv        # data, fit prediction and residual for every country
 report/
-  main.tex                # report, written in the course Overleaf template
+  MAT2007Project.pdf      # the compiled report (2 pages + title page)
+  main.tex                # report source, written in the course Overleaf template
   figures/                # figures used by the report
 data/                     # dataset (downloaded automatically, not committed)
 ```
