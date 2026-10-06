@@ -1,5 +1,7 @@
 # Is Economic Growth Decoupling from CO₂ Emissions?
 
+**Author:** Szymon Stembalski (i6389327)
+
 This is the data-analysis project for **MAT2007 Introduction to Programming** at Maastricht University.
 
 ## Research question
