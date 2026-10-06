@@ -1,0 +1,20 @@
+# Dataset is downloaded automatically by analysis.py
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# LaTeX build files
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.synctex.gz
+report/*.fls
+report/*.fdb_latexmk
+
+.DS_Store
+.vscode/
