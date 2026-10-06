@@ -1,9 +1,0 @@
-emissions,income_group,n,n_absolute,frac,frac_err
-territorial,Low,39,0,0.0,0.0
-territorial,Lower-middle,38,2,0.05263157894736842,0.036223536926930804
-territorial,Upper-middle,38,9,0.23684210526315788,0.06896755958184694
-territorial,High,38,23,0.6052631578947368,0.07929287277821243
-consumption-based,Low,22,0,0.0,0.0
-consumption-based,Lower-middle,26,0,0.0,0.0
-consumption-based,Upper-middle,31,5,0.16129032258064516,0.06605856502852811
-consumption-based,High,37,18,0.4864864864864865,0.08216946643938353

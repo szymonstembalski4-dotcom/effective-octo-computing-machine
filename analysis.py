@@ -1,18 +1,17 @@
 """
-Is economic growth decoupling from CO2 emissions?
+Does money buy a longer life? The Preston curve.
 
-Analysis of the Our World in Data (OWID) CO2 dataset for MAT2007.
+Analysis of Gapminder data for MAT2007.
 
-For every country we fit log-linear trends to GDP and to CO2 emissions over
-2005-2022 to get average annual growth rates (with standard errors). Each
-country is then classified as
-  - absolute decoupling: GDP grows, CO2 falls (significantly, at 95% CL)
-  - relative decoupling: both grow, but CO2 grows slower than GDP
-  - no decoupling:       CO2 grows at least as fast as GDP
-  - GDP decline:         the economy shrank, so decoupling is not defined
-The classification is done for territorial (production-based) emissions and
-for consumption-based emissions (which account for emissions embedded in
-imported goods), and is compared across income groups.
+For every country we take life expectancy at birth and GDP per capita in
+2019 (the last year before COVID-19) and fit
+
+    life_expectancy = a + b * log2(GDP per capita)
+
+so that the slope b is the number of years of life expectancy that go
+together with a doubling of income. To check whether the gain flattens out
+at high income, the same fit is repeated separately for the poorer and the
+richer half of the countries.
 
 Usage:
     python3 analysis.py
@@ -31,242 +30,163 @@ from scipy import stats
 
 # --- Configuration -----------------------------------------------------------
 
-# Pinned to a fixed commit of the OWID repository so results are reproducible.
-DATA_COMMIT = "382ee6c662b0ece26e111f263b44c029afad7787"
-DATA_URL = (
-    "https://raw.githubusercontent.com/owid/co2-data/"
-    f"{DATA_COMMIT}/owid-co2-data.csv"
+# Pinned to a fixed commit of the Gapminder repository so results are
+# reproducible.
+DATA_COMMIT = "85af9e1b82e5f5de64b2ad52c5fe2bd1c47b074b"
+BASE_URL = (
+    "https://raw.githubusercontent.com/open-numbers/ddf--gapminder--fasttrack/"
+    f"{DATA_COMMIT}/"
 )
-DATA_FILE = os.path.join("data", "owid-co2-data.csv")
+FILES = {
+    "lex": "countries_etc_datapoints/ddf--datapoints--lex--by--country--time.csv",
+    "gdp_pcap": "countries_etc_datapoints/ddf--datapoints--gdp_pcap--by--country--time.csv",
+    "pop": "countries_etc_datapoints/ddf--datapoints--pop--by--country--time.csv",
+    "countries": "ddf--entities--geo--country.csv",
+}
+DATA_DIR = "data"
 OUTPUT_DIR = "figures"
 
-START_YEAR = 2005
-END_YEAR = 2022  # last year with GDP data in the dataset
-MIN_POPULATION = 1_000_000  # skip micro-states, whose data are noisy
-Z95 = 1.96  # two-sided 95% confidence level
+YEAR = 2019  # last year before the COVID-19 pandemic
+MIN_POPULATION = 1_000_000  # skip micro-states
 
 
 # --- Data loading and cleaning -----------------------------------------------
 
 def load_data():
-    """Download the dataset (if not present) and return it as a DataFrame."""
-    if not os.path.exists(DATA_FILE):
-        os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-        print(f"Downloading dataset from {DATA_URL} ...")
-        urllib.request.urlretrieve(DATA_URL, DATA_FILE)
-    return pd.read_csv(DATA_FILE)
+    """Download the data files (if not present) and return them."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tables = {}
+    for name, path in FILES.items():
+        local = os.path.join(DATA_DIR, os.path.basename(path))
+        if not os.path.exists(local):
+            print(f"Downloading {name} ...")
+            urllib.request.urlretrieve(BASE_URL + path, local)
+        tables[name] = pd.read_csv(local)
+    return tables
 
 
-def clean_data(df):
-    """Keep real countries in the study period with complete GDP/CO2 data."""
-    # Aggregates such as "World" or "Europe" have no ISO code (or start with
-    # "OWID_"); we only want individual countries.
-    df = df[df["iso_code"].notna() & ~df["iso_code"].str.startswith("OWID")]
-    df = df[(df["year"] >= START_YEAR) & (df["year"] <= END_YEAR)]
-    df = df[["country", "iso_code", "year", "population", "gdp",
-             "co2", "consumption_co2"]].copy()
+def clean_data(tables):
+    """Build one row per country for YEAR with all variables present."""
+    df = None
+    for name in ["lex", "gdp_pcap", "pop"]:
+        t = tables[name]
+        t = t[t["time"] == YEAR][["country", name]]
+        df = t if df is None else df.merge(t, on="country")
 
-    n_years = END_YEAR - START_YEAR + 1
-    complete = df.dropna(subset=["gdp", "co2", "population"])
-    counts = complete.groupby("country")["year"].count()
-    keep = counts[counts == n_years].index
-    df = df[df["country"].isin(keep)]
+    countries = tables["countries"][["country", "name", "world_4region"]]
+    df = df.merge(countries, on="country")
 
-    pop_end = df[df["year"] == END_YEAR].set_index("country")["population"]
-    df = df[df["country"].isin(pop_end[pop_end >= MIN_POPULATION].index)]
+    df = df.dropna(subset=["lex", "gdp_pcap", "pop"])
+    df = df[df["pop"] >= MIN_POPULATION].copy()
+    df["log2_gdp"] = np.log2(df["gdp_pcap"])
     return df
 
 
 # --- Analysis ----------------------------------------------------------------
 
-def growth_rate(years, values):
+def fit(df):
+    """Linear fit of life expectancy against log2(GDP per capita)."""
+    return stats.linregress(df["log2_gdp"], df["lex"])
+
+
+def analyse(df):
+    """Print the main quantitative results and return the fits."""
+    print(f"\nCountries analysed: {len(df)} (year {YEAR}, "
+          f"population >= {MIN_POPULATION:,})")
+    print(f"Life expectancy: {df['lex'].min():.1f} to {df['lex'].max():.1f} years")
+    print(f"GDP per capita:  ${df['gdp_pcap'].min():,.0f} to "
+          f"${df['gdp_pcap'].max():,.0f}")
+
+    full = fit(df)
+    print("\nAll countries: life expectancy = a + b * log2(GDP per capita)")
+    print(f"  b = {full.slope:.2f} +/- {full.stderr:.2f} years per doubling of income")
+    print(f"  a = {full.intercept:.1f} +/- {full.intercept_stderr:.1f} years")
+    print(f"  r = {full.rvalue:.2f}, R^2 = {full.rvalue ** 2:.2f}, "
+          f"p = {full.pvalue:.1e}")
+
+    # Does the gain flatten out? Fit the poorer and richer halves separately.
+    median = df["gdp_pcap"].median()
+    poor = fit(df[df["gdp_pcap"] < median])
+    rich = fit(df[df["gdp_pcap"] >= median])
+    diff = poor.slope - rich.slope
+    diff_err = np.hypot(poor.stderr, rich.stderr)
+    print(f"\nSplit at the median GDP per capita (${median:,.0f}):")
+    print(f"  poorer half: b = {poor.slope:.2f} +/- {poor.stderr:.2f} years per doubling")
+    print(f"  richer half: b = {rich.slope:.2f} +/- {rich.stderr:.2f} years per doubling")
+    print(f"  difference:  {diff:.2f} +/- {diff_err:.2f} ({diff / diff_err:.1f} sigma)")
+
+    # Which countries live much longer or shorter than their income predicts?
+    df["predicted"] = full.intercept + full.slope * df["log2_gdp"]
+    df["residual"] = df["lex"] - df["predicted"]
+    cols = ["name", "gdp_pcap", "lex", "residual"]
+    print("\nLonger life than income predicts:")
+    print(df.nlargest(5, "residual")[cols].to_string(index=False, float_format="%.1f"))
+    print("\nShorter life than income predicts:")
+    print(df.nsmallest(5, "residual")[cols].to_string(index=False, float_format="%.1f"))
+    print(f"\nScatter around the fit: {df['residual'].std(ddof=2):.1f} years (1 sigma)")
+
+    df.sort_values("residual").to_csv(
+        os.path.join(OUTPUT_DIR, "country_data.csv"), index=False)
+    return full
+
+
+# --- Plot --------------------------------------------------------------------
+
+REGIONS = {"africa": ("Africa", "#1b9e77"), "americas": ("Americas", "#d95f02"),
+           "asia": ("Asia", "#7570b3"), "europe": ("Europe", "#e7298a")}
+
+
+def plot_preston(df, full):
     """
-    Fit log(values) = a + b * year and return the average annual growth rate
-    (in %) and its standard error. Returns (nan, nan) if data are missing.
+    The Preston curve on a linear axis (left) and a log axis (right). On the
+    linear axis the gain flattens; on the log axis it is a straight line.
     """
-    mask = np.isfinite(values) & (values > 0)
-    if mask.sum() != len(values):
-        return np.nan, np.nan
-    fit = stats.linregress(years, np.log(values))
-    rate = 100 * (np.exp(fit.slope) - 1)
-    err = 100 * np.exp(fit.slope) * fit.stderr  # error propagation
-    return rate, err
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2), sharey=True)
+    x = np.logspace(np.log10(df["gdp_pcap"].min()),
+                    np.log10(df["gdp_pcap"].max()), 200)
 
+    for ax in axes:
+        for key, (label, color) in REGIONS.items():
+            sub = df[df["world_4region"] == key]
+            ax.scatter(sub["gdp_pcap"] / 1000, sub["lex"],
+                       s=np.sqrt(sub["pop"]) / 40, color=color, alpha=0.6,
+                       edgecolor="white", linewidth=0.5, label=label)
+        ax.plot(x / 1000, full.intercept + full.slope * np.log2(x),
+                color="black", lw=1.8,
+                label=f"Fit: {full.slope:.1f} $\\pm$ {full.stderr:.1f} years\nper doubling of income")
+        for name in ["Nigeria", "India", "China", "USA", "Japan",
+                     "South Africa"]:
+            row = df[df["name"] == name]
+            if not row.empty:
+                ax.annotate(name, (row["gdp_pcap"].iloc[0] / 1000,
+                                   row["lex"].iloc[0]),
+                            fontsize=7, xytext=(4, -9),
+                            textcoords="offset points")
+        ax.grid(alpha=0.3)
 
-def classify(gdp_rate, co2_rate, co2_err):
-    """Classify a country's decoupling status."""
-    if np.isnan(co2_rate):
-        return np.nan
-    if gdp_rate <= 0:
-        return "GDP decline"
-    if co2_rate + Z95 * co2_err < 0:
-        return "absolute"
-    if co2_rate < gdp_rate:
-        return "relative"
-    return "none"
+    axes[0].set_xlabel(f"GDP per capita in {YEAR} (thousand int. $, PPP)")
+    axes[0].set_ylabel("Life expectancy at birth (years)")
+    axes[0].set_title("Linear scale: the gain flattens", fontsize=10)
 
+    axes[1].set_xscale("log")
+    axes[1].set_xticks([1, 2, 5, 10, 20, 50, 100])
+    axes[1].set_xticklabels(["1", "2", "5", "10", "20", "50", "100"])
+    axes[1].set_xlabel(f"GDP per capita in {YEAR} (thousand int. $, log scale)")
+    axes[1].set_title("Log scale: a straight line", fontsize=10)
 
-def per_country_trends(df):
-    """Compute growth rates and decoupling class for each country."""
-    rows = []
-    for country, g in df.groupby("country"):
-        g = g.sort_values("year")
-        years = g["year"].to_numpy()
-        gdp_pc = (g["gdp"] / g["population"]).to_numpy()
+    # Legend with equal-sized markers (proxy artists, so the plotted
+    # markers keep their population-based sizes).
+    handles = [plt.Line2D([], [], ls="", marker="o", ms=6, color=color,
+                          alpha=0.6) for _, color in REGIONS.values()]
+    labels = [label for label, _ in REGIONS.values()]
+    fit_line = axes[1].get_lines()[0]
+    axes[1].legend(handles + [fit_line], labels + [fit_line.get_label()],
+                   fontsize=7, loc="upper left")
 
-        gdp_rate, gdp_err = growth_rate(years, g["gdp"].to_numpy())
-        co2_rate, co2_err = growth_rate(years, g["co2"].to_numpy())
-        cons_rate, cons_err = growth_rate(years, g["consumption_co2"].to_numpy())
-
-        rows.append({
-            "country": country,
-            "gdp_per_capita_start": gdp_pc[0],
-            "gdp_rate": gdp_rate, "gdp_err": gdp_err,
-            "co2_rate": co2_rate, "co2_err": co2_err,
-            "cons_rate": cons_rate, "cons_err": cons_err,
-            "class_territorial": classify(gdp_rate, co2_rate, co2_err),
-            "class_consumption": classify(gdp_rate, cons_rate, cons_err),
-        })
-    res = pd.DataFrame(rows)
-
-    # Income groups: quartiles of GDP per capita in the starting year.
-    res["income_group"] = pd.qcut(
-        res["gdp_per_capita_start"], 4,
-        labels=["Low", "Lower-middle", "Upper-middle", "High"],
-    )
-    return res
-
-
-def fraction_with_error(k, n):
-    """Fraction k/n with its binomial standard error."""
-    p = k / n
-    return p, np.sqrt(p * (1 - p) / n)
-
-
-def summarise(res):
-    """Print the main quantitative results and return them as a table."""
-    print(f"\nCountries analysed: {len(res)} "
-          f"(period {START_YEAR}-{END_YEAR}, population >= {MIN_POPULATION:,})")
-
-    summary = []
-    for col, label in [("class_territorial", "territorial"),
-                       ("class_consumption", "consumption-based")]:
-        sub = res.dropna(subset=[col])
-        n = len(sub)
-        print(f"\nDecoupling using {label} CO2 (N = {n}):")
-        for cls in ["absolute", "relative", "none", "GDP decline"]:
-            k = (sub[col] == cls).sum()
-            p, e = fraction_with_error(k, n)
-            print(f"  {cls:11s}: {k:3d}  ({100 * p:5.1f} +/- {100 * e:4.1f} %)")
-
-        for grp, gsub in sub.groupby("income_group", observed=True):
-            k = (gsub[col] == "absolute").sum()
-            p, e = fraction_with_error(k, len(gsub))
-            summary.append({"emissions": label, "income_group": grp,
-                            "n": len(gsub), "n_absolute": k,
-                            "frac": p, "frac_err": e})
-
-    table = pd.DataFrame(summary)
-    print("\nFraction of countries with absolute decoupling, by income group:")
-    print(table.to_string(index=False, float_format="%.3f"))
-
-    # Is the CO2 growth rate correlated with initial income?
-    rho, pval = stats.spearmanr(np.log(res["gdp_per_capita_start"]),
-                                res["co2_rate"])
-    print(f"\nSpearman correlation, log(GDP per capita {START_YEAR}) vs "
-          f"CO2 growth rate: rho = {rho:.2f}, p = {pval:.1e}")
-
-    # Difference between high- and low-income groups (territorial).
-    terr = table[table["emissions"] == "territorial"].set_index("income_group")
-    diff = terr.loc["High", "frac"] - terr.loc["Low", "frac"]
-    diff_err = np.hypot(terr.loc["High", "frac_err"],
-                        terr.loc["Low", "frac_err"])
-    print(f"High minus low income (territorial): {diff:.2f} +/- {diff_err:.2f} "
-          f"({diff / diff_err:.1f} sigma)")
-
-    res.sort_values("co2_rate").to_csv(
-        os.path.join(OUTPUT_DIR, "country_trends.csv"), index=False)
-    table.to_csv(os.path.join(OUTPUT_DIR, "decoupling_by_income.csv"),
-                 index=False)
-    return table
-
-
-# --- Plots -------------------------------------------------------------------
-
-COLORS = {"Low": "#d95f02", "Lower-middle": "#e6ab02",
-          "Upper-middle": "#66a61e", "High": "#1b6ca8"}
-
-
-def plot_scatter(res):
-    """GDP growth vs CO2 growth for every country, with decoupling regions."""
-    fig, ax = plt.subplots(figsize=(7, 5))
-    lim_x = (min(-2, res["gdp_rate"].min() - 0.5), res["gdp_rate"].max() + 0.5)
-    lim_y = (res["co2_rate"].min() - 0.5, res["co2_rate"].max() + 0.5)
-
-    x = np.linspace(0, lim_x[1], 2)
-    ax.fill_between(x, lim_y[0], 0, color="#1b9e77", alpha=0.12,
-                    label="Absolute decoupling region")
-    ax.fill_between(x, 0, x, color="#7570b3", alpha=0.12,
-                    label="Relative decoupling region")
-    ax.plot([lim_x[0], lim_x[1]], [lim_x[0], lim_x[1]], "k--", lw=0.8,
-            label="CO$_2$ growth = GDP growth")
-    ax.axhline(0, color="grey", lw=0.6)
-    ax.axvline(0, color="grey", lw=0.6)
-
-    for grp, sub in res.groupby("income_group", observed=True):
-        ax.errorbar(sub["gdp_rate"], sub["co2_rate"], yerr=sub["co2_err"],
-                    fmt="o", ms=4, lw=0.6, alpha=0.8, color=COLORS[grp],
-                    label=f"{grp} income")
-
-    # Label a few well-known countries (offsets chosen to avoid overlaps).
-    labels = {"United States": (8, 10), "China": (6, -10), "India": (6, 4),
-              "Germany": (-55, -12), "United Kingdom": (6, -8),
-              "Brazil": (6, 2)}
-    for name, offset in labels.items():
-        row = res[res["country"] == name]
-        if not row.empty:
-            ax.annotate(name, (row["gdp_rate"].iloc[0], row["co2_rate"].iloc[0]),
-                        fontsize=7, xytext=offset, textcoords="offset points",
-                        arrowprops=dict(arrowstyle="-", lw=0.4, color="grey"))
-
-    ax.set_xlim(lim_x)
-    ax.set_ylim(lim_y)
-    ax.set_xlabel(f"Average annual GDP growth {START_YEAR}-{END_YEAR} (%)")
-    ax.set_ylabel(f"Average annual CO$_2$ growth {START_YEAR}-{END_YEAR} (%)")
-    ax.set_title("Economic growth vs territorial CO$_2$ emission growth")
-    ax.legend(fontsize=7, loc="upper left")
+    fig.suptitle(f"The Preston curve: {len(df)} countries in {YEAR} "
+                 "(marker area ~ population)", fontsize=11)
     fig.tight_layout()
-    fig.savefig(os.path.join(OUTPUT_DIR, "growth_scatter.png"), dpi=200)
-    plt.close(fig)
-
-
-def plot_fractions(table):
-    """Fraction of countries with absolute decoupling per income group."""
-    fig, ax = plt.subplots(figsize=(7, 3.8))
-    groups = ["Low", "Lower-middle", "Upper-middle", "High"]
-    width = 0.38
-    pos = np.arange(len(groups))
-    for i, (label, color) in enumerate([("territorial", "#1b6ca8"),
-                                        ("consumption-based", "#a6cee3")]):
-        sub = table[table["emissions"] == label].set_index("income_group")
-        sub = sub.loc[groups]
-        x = pos + (i - 0.5) * width
-        ax.bar(x, 100 * sub["frac"], width,
-               yerr=100 * sub["frac_err"], capsize=3, color=color,
-               label=f"{label.capitalize()} CO$_2$")
-        # Show the raw counts k/n above each bar.
-        for xi, f, e, k, n in zip(x, sub["frac"], sub["frac_err"],
-                                  sub["n_absolute"], sub["n"]):
-            ax.text(xi, 100 * (f + e) + 1.5, f"{k}/{n}", ha="center",
-                    fontsize=7)
-    ax.set_xticks(pos)
-    ax.set_xticklabels([f"{g}\nincome" for g in groups])
-    ax.set_ylabel("Countries with absolute\ndecoupling (%)")
-    ax.set_ylim(0, 80)
-    ax.set_title(f"Absolute decoupling by income group ({START_YEAR}-{END_YEAR})")
-    ax.legend(fontsize=8)
-    fig.tight_layout()
-    fig.savefig(os.path.join(OUTPUT_DIR, "decoupling_by_income.png"), dpi=200)
+    fig.savefig(os.path.join(OUTPUT_DIR, "preston_curve.png"), dpi=200)
     plt.close(fig)
 
 
@@ -275,11 +195,9 @@ def plot_fractions(table):
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     df = clean_data(load_data())
-    res = per_country_trends(df)
-    table = summarise(res)
-    plot_scatter(res)
-    plot_fractions(table)
-    print(f"\nFigures and tables written to '{OUTPUT_DIR}/'.")
+    full = analyse(df)
+    plot_preston(df, full)
+    print(f"\nFigure and table written to '{OUTPUT_DIR}/'.")
 
 
 if __name__ == "__main__":

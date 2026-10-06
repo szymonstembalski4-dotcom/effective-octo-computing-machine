@@ -18,3 +18,4 @@ report/*.fdb_latexmk
 
 .DS_Store
 .vscode/
+report/main.pdf

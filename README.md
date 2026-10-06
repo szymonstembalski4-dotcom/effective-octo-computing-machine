@@ -1,4 +1,4 @@
-# Is Economic Growth Decoupling from CO₂ Emissions?
+# Does Money Buy a Longer Life? The Preston Curve
 
 **Author:** Szymon Stembalski (i6389327)
 
@@ -6,55 +6,54 @@ This is the data-analysis project for **MAT2007 Introduction to Programming** at
 
 ## Research question
 
-**How many countries achieved absolute decoupling between 2005 and 2022, meaning their GDP grew while their CO₂ emissions fell? How does this depend on a country's income level? Does the result still hold when emissions are counted by consumption rather than production?**
+**How many years of life expectancy go together with a doubling of a country's income? And is this gain smaller for rich countries than for poor ones?**
 
 ## Dataset
 
-- **Source:** [Our World in Data, CO₂ and Greenhouse Gas Emissions dataset](https://github.com/owid/co2-data)
-- **File used:** `owid-co2-data.csv` (about 14 MB, 79 columns, one row per country per year)
-- **Version:** pinned to commit [`382ee6c`](https://github.com/owid/co2-data/tree/382ee6c662b0ece26e111f263b44c029afad7787) so the results are reproducible
-- **Columns used:** `country`, `iso_code`, `year`, `population`, `gdp`, `co2`, `consumption_co2`
+- **Source:** [Gapminder Fast Track dataset](https://github.com/open-numbers/ddf--gapminder--fasttrack), compiled by the Gapminder Foundation from UN, World Bank and other sources.
+- **Version:** pinned to commit [`85af9e1`](https://github.com/open-numbers/ddf--gapminder--fasttrack/tree/85af9e1b82e5f5de64b2ad52c5fe2bd1c47b074b) so the results are reproducible.
+- **Files used:**
+  - `ddf--datapoints--lex--by--country--time.csv`: life expectancy at birth (years)
+  - `ddf--datapoints--gdp_pcap--by--country--time.csv`: GDP per capita (international $, PPP, inflation-adjusted)
+  - `ddf--datapoints--pop--by--country--time.csv`: population
+  - `ddf--entities--geo--country.csv`: country names and world regions
 
-You do **not** need to download the dataset yourself. On its first run, `analysis.py` downloads it into `data/`. The script also does all the cleaning, so no manual preparation is needed. It:
-1. removes regional aggregates such as "World" and "Europe" (rows with no ISO code or with an `OWID_` code);
-2. keeps only countries with complete GDP, CO₂ and population data for every year from 2005 to 2022;
-3. drops countries with fewer than 1 million inhabitants.
+You do **not** need to download the data yourself. On its first run, `analysis.py` downloads the four files (about 4 MB) into `data/`. The script also does all the cleaning, so no manual preparation is needed. It:
+1. keeps only the year 2019, the last year before COVID-19;
+2. drops countries with fewer than 1 million inhabitants.
 
-That leaves 153 countries. Consumption-based CO₂ data exist for 116 of them.
+That leaves 158 countries, each with complete data.
 
 ## What the script does
 
-1. For each country, it fits a log-linear trend `ln X = a + b·year` to GDP, territorial CO₂ and consumption-based CO₂. From each fit it gets the average annual growth rate and its uncertainty.
-2. It classifies each country as one of the following:
-   - **absolute decoupling:** GDP grows and CO₂ falls at 95% confidence;
-   - **relative decoupling:** CO₂ grows, but more slowly than GDP;
-   - **no decoupling:** CO₂ grows at least as fast as GDP;
-   - **GDP decline:** the economy shrank.
-3. It compares the fraction of decoupling countries across four income groups (quartiles of GDP per capita in 2005), with binomial uncertainties.
-4. It prints the quantitative results and writes plots and tables to `figures/`.
+1. It fits `life expectancy = a + b · log2(GDP per capita)` by least squares. The slope `b` is the number of years of life expectancy per doubling of income.
+2. It repeats the fit for the poorer and the richer half of the countries (split at the median income) and compares the two slopes.
+3. It lists the countries that live much longer or shorter than their income predicts.
+4. It prints all results and saves a figure and a table in `figures/`.
 
 ## Main result
 
-| Emissions measure | Absolute decoupling, all countries | Low income | High income |
-|---|---|---|---|
-| Territorial | 22.2 ± 3.4 % (34/153) | 0/39 | 60.5 ± 7.9 % (23/38) |
-| Consumption-based | 19.8 ± 3.7 % (23/116) | 0/22 | 48.6 ± 8.2 % (18/37) |
+| Sample | Years of life expectancy per doubling of income |
+|---|---|
+| All 158 countries | **3.67 ± 0.18** (r = 0.85, R² = 0.73) |
+| Poorer half | 3.64 ± 0.45 |
+| Richer half | 3.46 ± 0.47 |
 
-Absolute decoupling is real but mostly limited to rich countries. The gap between the high- and low-income groups is significant at 7.6σ. Counting emissions by consumption reduces the effect only slightly, so offshoring of production does not explain most of it. The full discussion is in [`report/report.pdf`](report/report.pdf).
+The two halves agree within 0.3σ, so each doubling of income adds about the same number of years for poor and rich countries alike. In dollars, however, a doubling is far cheaper for a poor country. Going from $1,000 to $2,000 adds as many years as going from $50,000 to $100,000. That is why the curve flattens on a linear income axis.
+
+![Preston curve](figures/preston_curve.png)
 
 ## Repository structure
 
 ```
 analysis.py               # the analysis code
 requirements.txt          # Python dependencies
-figures/                  # output plots and tables (created by analysis.py)
-  growth_scatter.png
-  decoupling_by_income.png
-  country_trends.csv      # growth rates and classification for every country
-  decoupling_by_income.csv
+figures/                  # output (created by analysis.py)
+  preston_curve.png       # main figure
+  country_data.csv        # data, fit prediction and residual for every country
 report/
-  report.tex              # 2-page LaTeX report
-  report.pdf              # compiled report
+  main.tex                # report, written in the course Overleaf template
+  figures/                # figures used by the report
 data/                     # dataset (downloaded automatically, not committed)
 ```
 
@@ -63,7 +62,7 @@ data/                     # dataset (downloaded automatically, not committed)
 ### Requirements
 - Python 3.9 or newer (tested with Python 3.13)
 - The packages in `requirements.txt`: pandas, numpy, scipy, matplotlib
-- An internet connection on the first run, to download the dataset
+- An internet connection on the first run, to download the data
 
 ### Installation
 ```bash
@@ -80,14 +79,9 @@ python3 analysis.py
 ```
 To run it in **VS Code**, open the folder, select the `.venv` interpreter (Ctrl+Shift+P → *Python: Select Interpreter*), open `analysis.py` and press ▶ *Run Python File*.
 
-The script prints a summary to the terminal and saves the figures and CSV tables in `figures/`. It takes a few seconds once the dataset has been downloaded.
+The script prints the results to the terminal and saves `figures/preston_curve.png` and `figures/country_data.csv`. It takes a few seconds.
 
-If you are offline, download the CSV manually from the pinned link above and save it as `data/owid-co2-data.csv`.
+If you are offline, download the four files from the pinned links above and save them in `data/` under their original file names.
 
 ### Building the report
-You can upload `report/report.tex` and the two PNG files to Overleaf, or compile it locally:
-```bash
-cd report
-pdflatex report.tex
-```
-The report looks for the figures at `../figures/`. On Overleaf, upload them into a `figures/` folder and change the paths to `figures/...`.
+The report is written in the course's Overleaf template. Copy `report/main.tex` into the Overleaf project, upload `figures/preston_curve.png` into its `figures/` folder next to `MSP-logo.jpg`, and recompile.
