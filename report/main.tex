@@ -54,7 +54,7 @@ variables:
   \item \texttt{gdp\_pcap}: GDP per capita in international dollars, adjusted
         for inflation and for purchasing power (PPP), so that incomes can be
         compared between countries;
-  \item \texttt{pop}: population.
+  \item \texttt{pop}: population, used to drop very small countries.
 \end{itemize}
 We also use the country names and the world region of each country.
 
@@ -68,9 +68,9 @@ from 53.8 to 85.4 years, and GDP per capita ranges from \$583 to \$120\,114.
 \section*{Data analysis method}
 The analysis is a single Python script using \texttt{pandas},
 \texttt{scipy} and \texttt{matplotlib}. Plotted against income, life
-expectancy rises quickly at first and then levels off (left panel of
-Figure~\ref{fig:preston}). Plotted against the \emph{logarithm} of income, the
-relation is close to a straight line (right panel). We therefore fit
+expectancy rises quickly at first and then levels off. Plotted against the
+\emph{logarithm} of income, the relation is close to a straight line
+(Figure~\ref{fig:preston}). We therefore fit
 \begin{equation}
   \mbox{life expectancy} = a + b \cdot \log_2(\mbox{GDP per capita})
 \end{equation}
@@ -88,11 +88,10 @@ $\sigma_{\Delta b} = \sqrt{\sigma_{\rm poor}^2 + \sigma_{\rm rich}^2}$.
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\linewidth]{figures/preston_curve.png}
+  \includegraphics[width=0.85\linewidth]{figures/preston_curve.png}
   \caption{Life expectancy against GDP per capita for 158 countries in 2019.
-  Each circle is a country; its area is proportional to the population, and
-  its colour shows the world region. The black line is the fit of
-  Eq.~(1). Left: linear income axis. Right: logarithmic income axis.}
+  Each dot is a country, coloured by world region. The income axis is
+  logarithmic. The black line is the fit of Eq.~(1).}
   \label{fig:preston}
 \end{figure}
 

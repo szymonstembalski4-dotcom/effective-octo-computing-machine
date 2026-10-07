@@ -137,54 +137,34 @@ REGIONS = {"africa": ("Africa", "#1b9e77"), "americas": ("Americas", "#d95f02"),
 
 
 def plot_preston(df, full):
-    """
-    The Preston curve on a linear axis (left) and a log axis (right). On the
-    linear axis the gain flattens; on the log axis it is a straight line.
-    """
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2), sharey=True)
+    """Scatter of countries (log income axis) with the fitted straight line."""
+    fig, ax = plt.subplots(figsize=(8, 4.6))
+
+    for key, (label, color) in REGIONS.items():
+        sub = df[df["world_4region"] == key]
+        ax.scatter(sub["gdp_pcap"] / 1000, sub["lex"], s=25, color=color,
+                   alpha=0.8, label=label)
+
     x = np.logspace(np.log10(df["gdp_pcap"].min()),
                     np.log10(df["gdp_pcap"].max()), 200)
+    ax.plot(x / 1000, full.intercept + full.slope * np.log2(x),
+            color="black", lw=2,
+            label=f"Fit: {full.slope:.2f} $\\pm$ {full.stderr:.2f} years per doubling")
 
-    for ax in axes:
-        for key, (label, color) in REGIONS.items():
-            sub = df[df["world_4region"] == key]
-            ax.scatter(sub["gdp_pcap"] / 1000, sub["lex"],
-                       s=np.sqrt(sub["pop"]) / 40, color=color, alpha=0.6,
-                       edgecolor="white", linewidth=0.5, label=label)
-        ax.plot(x / 1000, full.intercept + full.slope * np.log2(x),
-                color="black", lw=1.8,
-                label=f"Fit: {full.slope:.1f} $\\pm$ {full.stderr:.1f} years\nper doubling of income")
-        for name in ["Nigeria", "India", "China", "USA", "Japan",
-                     "South Africa"]:
-            row = df[df["name"] == name]
-            if not row.empty:
-                ax.annotate(name, (row["gdp_pcap"].iloc[0] / 1000,
-                                   row["lex"].iloc[0]),
-                            fontsize=7, xytext=(4, -9),
-                            textcoords="offset points")
-        ax.grid(alpha=0.3)
+    for name in ["Nigeria", "India", "China", "USA", "Japan", "South Africa"]:
+        row = df[df["name"] == name]
+        if not row.empty:
+            ax.annotate(name, (row["gdp_pcap"].iloc[0] / 1000, row["lex"].iloc[0]),
+                        fontsize=8, xytext=(5, -10), textcoords="offset points")
 
-    axes[0].set_xlabel(f"GDP per capita in {YEAR} (thousand int. $, PPP)")
-    axes[0].set_ylabel("Life expectancy at birth (years)")
-    axes[0].set_title("Linear scale: the gain flattens", fontsize=10)
-
-    axes[1].set_xscale("log")
-    axes[1].set_xticks([1, 2, 5, 10, 20, 50, 100])
-    axes[1].set_xticklabels(["1", "2", "5", "10", "20", "50", "100"])
-    axes[1].set_xlabel(f"GDP per capita in {YEAR} (thousand int. $, log scale)")
-    axes[1].set_title("Log scale: a straight line", fontsize=10)
-
-    # Legend with equal-sized markers (proxy artists, so the plotted
-    # markers keep their population-based sizes).
-    handles = [plt.Line2D([], [], ls="", marker="o", ms=6, color=color,
-                          alpha=0.6) for _, color in REGIONS.values()]
-    labels = [label for label, _ in REGIONS.values()]
-    fit_line = axes[1].get_lines()[0]
-    axes[1].legend(handles + [fit_line], labels + [fit_line.get_label()],
-                   fontsize=7, loc="upper left")
-
-    fig.suptitle(f"The Preston curve: {len(df)} countries in {YEAR} "
-                 "(marker area ~ population)", fontsize=11)
+    ax.set_xscale("log")
+    ax.set_xticks([1, 2, 5, 10, 20, 50, 100])
+    ax.set_xticklabels(["1", "2", "5", "10", "20", "50", "100"])
+    ax.set_xlabel(f"GDP per capita in {YEAR} (thousand dollars, log scale)")
+    ax.set_ylabel("Life expectancy at birth (years)")
+    ax.set_title(f"Life expectancy vs income: {len(df)} countries in {YEAR}")
+    ax.legend(fontsize=8, loc="upper left")
+    ax.grid(alpha=0.3)
     fig.tight_layout()
     fig.savefig(os.path.join(OUTPUT_DIR, "preston_curve.png"), dpi=200)
     plt.close(fig)
