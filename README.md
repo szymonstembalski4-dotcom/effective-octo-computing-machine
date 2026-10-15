@@ -43,6 +43,10 @@ The two halves agree within 0.3σ, so each doubling of income adds about the sam
 
 ![Preston curve](figures/preston_curve.png)
 
+## Use of AI tools
+
+I used Claude to help write and debug the Python code, and to draft the README and report. I chose the research question, ran the analysis on my own laptop, checked the results, and can explain all steps of the method and the code.
+
 ## Repository structure
 
 ```
